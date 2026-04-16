@@ -57,7 +57,7 @@ ENV=prod
 DRIVER_OPTS_DEVICE=/tmp
 DRIVER_OPTS_TYPE="none"
 DRIVER_OPTS_OPTIONS="bind"
-MONGO_HOST=<your_local_192_ip>        # run: ifconfig | grep 192
+MONGO_HOST=<your_local_ip_usually_192.something_or_172.something>        # run: ifconfig | grep 192 or ifconfig | grep 172
 CORS_CONFIGS=*
 PAYLOAD_PUBLIC_SERVER_URL=http://localhost:3000
 DEBUG_EMAIL_SEND=1                    # logs email content to console instead of sending
@@ -78,6 +78,10 @@ docker compose up database messagebus cache
 ```
 
 Wait until you see the MongoDB replica set initialised in the logs before proceeding.
+
+NOTE-1: if the database does not start with "unable to load security key" or similar error, please refer to the docker-compose-simplified.yaml file for a simplified version of the docker compose file that remove the need to run a replicaset
+
+NOTE-2: if you already have a mongodb instance running locally, you can avoid entirely the docker compose command
 
 ### 1.5 Start MZinga
 
