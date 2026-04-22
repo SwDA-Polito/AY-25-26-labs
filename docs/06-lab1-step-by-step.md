@@ -21,9 +21,29 @@ Before starting, ensure you have installed:
 
 ## Step 1 — Clone and set up MZinga locally
 
-### 1.1 Clone the repository
+### 1.1 Fork this repository and configure `.gitignore`
 
-Inside the `mzinga/` folder of this lab repo (already in `.gitignore`):
+This lab repo has `mzinga/` listed in `.gitignore` to prevent accidentally pushing the MZinga source code to the shared lab repository. Before cloning MZinga, fork this repo to your own GitHub/GitLab account so you have a personal copy where you can commit everything — including the MZinga code and your worker — without affecting the shared repo.
+
+After forking and cloning your fork locally, open `.gitignore` at the root of the repo and remove the `mzinga/` line:
+
+```sh
+# remove this line from .gitignore:
+mzinga/
+```
+
+Commit the change:
+
+```sh
+git add .gitignore
+git commit -m "chore: allow mzinga folder to be tracked in personal fork"
+```
+
+From this point your fork will track the `mzinga/` folder and all changes you make inside it.
+
+### 1.2 Clone the MZinga repository
+
+Inside the `mzinga/` folder of this lab repo:
 
 ```sh
 cd mzinga
@@ -31,21 +51,50 @@ git clone https://github.com/mzinga-io/mzinga-apps.git
 cd mzinga-apps
 ```
 
-### 1.2 Install dependencies
+### 1.3 Install dependencies
 
 ```sh
 npm install
 ```
 
-### 1.3 Configure the environment
+### 1.4 Choose which docker-compose file to use
 
-Copy the template and fill in the required values:
+Two compose files are provided in the `docs/` folder of this lab repo. Copy the one that matches your situation into `mzinga-apps/` before running any `docker compose` command.
+
+**`docker-compose-original.yml`** — uses a MongoDB replica set secured with a key file. Required for full Payload CMS functionality (change streams, transactions). More complex to set up; can fail with permission errors on the key file depending on the OS and Docker configuration.
+
+**`docker-compose-simplified.yml`** — uses a plain MongoDB instance with no replica set and no key file. Simpler and more portable across all platforms. Sufficient for this lab.
+
+**Start with the simplified file.** Switch to the original only if you have a specific reason to need replica set features.
+
+```sh
+cp ../../docs/docker-compose-simplified.yml docker-compose.yml
+```
+
+> This overwrites the existing `docker-compose.yml` in `mzinga-apps/`. The original is preserved in `docs/docker-compose-original.yml`.
+
+---
+
+### 1.5 Configure the environment
+
+Copy the template:
 
 ```sh
 cp .env.template .env
 ```
 
-Edit `.env` with the following minimum configuration for local development:
+Two values require OS-specific attention: `MONGO_HOST` and `DRIVER_OPTS_DEVICE`.
+
+**`MONGO_HOST`** is the IP address of your machine as seen from inside Docker containers. It is used by the MongoDB healthcheck. It is never `localhost` or `127.0.0.1` — those resolve to the container itself, not your host.
+
+**`DRIVER_OPTS_DEVICE`** is the absolute path on your host where Docker will bind-mount persistent volume data (MongoDB, RabbitMQ, MZinga uploads). The directory must exist before you run `docker compose`.
+
+| Setting | macOS | Linux | Windows — containers in WSL | Windows — containers outside WSL |
+|---|---|---|---|---|
+| How to find `MONGO_HOST` | `ifconfig \| grep 192` or `ifconfig \| grep 172` — use the `inet` value | `ip addr \| grep 192` or `ip addr \| grep 172` | Run `ip addr` inside WSL — use the `eth0` inet value (typically `172.x.x.x`) | Run `ipconfig` in PowerShell — use the **vEthernet (WSL)** adapter IP (typically `172.x.x.x`) |
+| `DRIVER_OPTS_DEVICE` example | `/tmp` or `/Users/<user>/mzinga-data` | `/tmp` or `/home/<user>/mzinga-data` | `/tmp` or `/home/<user>/mzinga-data` (WSL path) | `C:/Users/<user>/mzinga-data` (forward slashes) |
+
+Full `.env` for local development:
 
 ```sh
 DISABLE_TRACING=1
@@ -57,31 +106,93 @@ ENV=prod
 DRIVER_OPTS_DEVICE=/tmp
 DRIVER_OPTS_TYPE="none"
 DRIVER_OPTS_OPTIONS="bind"
-MONGO_HOST=<your_local_192_ip>        # run: ifconfig | grep 192
+MONGO_HOST=<your_ip>
 CORS_CONFIGS=*
 PAYLOAD_PUBLIC_SERVER_URL=http://localhost:3000
-DEBUG_EMAIL_SEND=1                    # logs email content to console instead of sending
+DEBUG_EMAIL_SEND=1
 ```
 
 > `DEBUG_EMAIL_SEND=1` activates an existing flag in `MailUtils.ts` that logs the email payload to the console without actually calling the SMTP transport. This lets you verify the email flow without a real SendGrid key.
 
-> `MONGO_HOST` must be your machine's current LAN IP (not `localhost`). It is used by the MongoDB replica set healthcheck inside Docker. Run `ifconfig | grep 192` to find it — it changes when you switch networks.
+---
 
-### 1.4 Start the infrastructure (MongoDB + RabbitMQ + Redis)
+### 1.6 Prepare volume directories
 
-Prepare the volume directories and start only the infrastructure services:
+The data directories must exist before Docker can bind-mount them.
+
+**macOS, Linux, and Windows running containers inside WSL:**
 
 ```sh
 rm -rf /tmp/database /tmp/mzinga /tmp/messagebus
 mkdir -p /tmp/database /tmp/mzinga /tmp/messagebus
+```
+
+If you prefer persistent data that survives reboots, use a directory in your home folder and update `DRIVER_OPTS_DEVICE` accordingly:
+
+```sh
+mkdir -p ~/mzinga-data/database ~/mzinga-data/mzinga ~/mzinga-data/messagebus
+```
+
+**Windows running containers outside WSL (Docker Desktop with Windows filesystem volumes):**
+
+Run in PowerShell:
+
+```powershell
+New-Item -ItemType Directory -Force -Path C:\mzinga-data\database
+New-Item -ItemType Directory -Force -Path C:\mzinga-data\mzinga
+New-Item -ItemType Directory -Force -Path C:\mzinga-data\messagebus
+```
+
+Set `DRIVER_OPTS_DEVICE=C:/mzinga-data` in `.env` (use forward slashes).
+
+> On Windows with Docker Desktop, if you see volume mount errors, ensure the drive is shared: Docker Desktop → Settings → Resources → File Sharing → add the drive or folder.
+
+---
+
+### 1.7 Start the infrastructure
+
+Start only the infrastructure services (MongoDB, RabbitMQ, Redis). MZinga itself will be started separately via `npm run dev`.
+
+**macOS, Linux, WSL:**
+
+```sh
 docker compose up database messagebus cache
 ```
 
-Wait until you see the MongoDB replica set initialised in the logs before proceeding.
+**Windows PowerShell:**
 
-### 1.5 Start MZinga
+```powershell
+docker compose up database messagebus cache
+```
 
-In a separate terminal:
+Watch the logs. MongoDB is ready when the `database` container reports it is accepting connections. With the simplified file there is no replica set init — it starts faster.
+
+**If you are using `docker-compose-original.yml` and the database container exits with an error containing `Unable to acquire security key` or `Unable to read security file`:**
+
+Switch to the simplified file and wipe the data directories before retrying — a volume initialised with a replica set configuration cannot be reused by a standalone instance:
+
+```sh
+# macOS / Linux / WSL
+rm -rf /tmp/database /tmp/mzinga /tmp/messagebus
+mkdir -p /tmp/database /tmp/mzinga /tmp/messagebus
+cp ../../docs/docker-compose-simplified.yml docker-compose.yml
+docker compose up database messagebus cache
+```
+
+```powershell
+# Windows PowerShell
+Remove-Item -Recurse -Force C:\mzinga-data
+New-Item -ItemType Directory -Force -Path C:\mzinga-data\database
+New-Item -ItemType Directory -Force -Path C:\mzinga-data\mzinga
+New-Item -ItemType Directory -Force -Path C:\mzinga-data\messagebus
+docker compose up database messagebus cache
+```
+
+---
+
+### 1.8 Start MZinga
+
+Open a new terminal and run:
 
 ```sh
 npm run dev
@@ -89,7 +200,11 @@ npm run dev
 
 Open [http://localhost:3000/admin](http://localhost:3000/admin) and create the first admin user when prompted.
 
-### 1.6 Verify the setup
+**Windows note:** run this in the same environment where Node.js is installed. If Node.js is installed on Windows (not inside WSL), use PowerShell or Command Prompt. If Node.js is installed inside WSL, use the WSL terminal.
+
+---
+
+### 1.9 Verify the setup
 
 - Admin UI loads at `http://localhost:3000/admin`
 - The **Communications** collection is visible under the **Notifications** group in the sidebar
@@ -203,8 +318,10 @@ COMMUNICATIONS_EXTERNAL_WORKER=true
 
 In `src/collections/Communications.ts`, modify the `afterChange` hook body so that:
 
-- When `COMMUNICATIONS_EXTERNAL_WORKER` is not `"true"`, the original email sending logic runs unchanged (keep all existing lines 37–103 intact inside this branch)
+- When `COMMUNICATIONS_EXTERNAL_WORKER` is not `"true"`, the original email sending logic runs unchanged (keep all existing lines 37–103 intact inside this branch), then write `status: "sent"` on the document
 - When `COMMUNICATIONS_EXTERNAL_WORKER` is `"true"`, the hook instead calls `payload.update` to write `status: "pending"` on the document and returns immediately
+
+Add a guard at the top of the hook: if `doc.status` is already `"pending"` or `"sent"`, return immediately without doing anything. This prevents the `payload.update` call from triggering the hook again in an infinite loop.
 
 > This is the **Branch by Abstraction** pattern: the abstraction boundary is the environment variable. The old path is preserved and reachable by setting `COMMUNICATIONS_EXTERNAL_WORKER=false`. You can roll back instantly.
 
@@ -218,6 +335,7 @@ With `COMMUNICATIONS_EXTERNAL_WORKER=true`:
 
 With `COMMUNICATIONS_EXTERNAL_WORKER=false` (or unset):
 - The original behaviour is restored: email is logged to the console (because `DEBUG_EMAIL_SEND=1`) and the request blocks until done
+- The document should show `status: sent` after saving
 
 ---
 
@@ -277,10 +395,22 @@ Write a Python script that does the following in a loop:
 
 ### 5.5 Install dependencies and run
 
+**macOS, Linux, WSL:**
+
 ```sh
 cd lab1-worker
 python -m venv .venv
 source .venv/bin/activate
+pip install -r requirements.txt
+python worker.py
+```
+
+**Windows PowerShell:**
+
+```powershell
+cd lab1-worker
+python -m venv .venv
+.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
 python worker.py
 ```
@@ -324,4 +454,4 @@ To test failure handling, temporarily stop the worker, create a Communication, t
 
 ---
 
-**Previous:** [05 — Supporting Patterns Catalogue](05-supporting-patterns-catalogue.md) · **Next:** [07 — Lab 2 Step by Step](07-lab2-step-by-step.md)
+**Previous:** [05b — Infrastructure Reference](05b-infrastructure-reference.md) · **Code snippets:** [06b — Lab 1 Code Snippets](06-lab1-code-snippets.md) · **Next:** [07 — Lab 2 Step by Step](07-lab2-step-by-step.md)
