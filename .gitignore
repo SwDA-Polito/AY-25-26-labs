@@ -9,3 +9,5 @@
 # VSCode
 .vscode/
 *.code-workspace
+
+.idea/

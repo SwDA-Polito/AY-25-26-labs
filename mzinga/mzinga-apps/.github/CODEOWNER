@@ -1,0 +1,25 @@
+# Order matters. The last matching pattern takes precedence.
+
+# All source code and configuration files
+/src/           @mzinga-team
+/scripts/       @mzinga-team
+/.husky/        @mzinga-team
+/.vscode/       @mzinga-team
+/.github/       @mzinga-team
+
+# Main configuration files
+/package.json           @mzinga-team
+/yarn.lock              @mzinga-team
+/tsconfig.json          @mzinga-team
+/tsconfig.*.json        @mzinga-team
+/jest.config.js         @mzinga-team
+/jest.config.*.js       @mzinga-team
+/docker-compose.yml     @mzinga-team
+/.env*                  @mzinga-team
+
+# Documentation
+/README.md              @mzinga-team
+/docs/                  @mzinga-team
+
+# Catch-all (fallback)
+/*                     @mzinga-team
